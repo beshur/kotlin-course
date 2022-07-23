@@ -2,48 +2,39 @@ package minesweeper
 
 import kotlin.random.Random
 
-fun main() {
-  val ITEMS = listOf(".", "X")
-  val MINE = ITEMS[1]
-  val EMPTY = ITEMS[0]
+enum class Indicators(val str: String) {
+  MINE("X"), EMPTY("."), MARKED("*")
+}
+class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
+  private val field: MutableList<MutableList<Indicators>> =  mutableListOf()
+  private val playerField: MutableList<MutableList<String>> =  MutableList(9) {MutableList(width) {Indicators.EMPTY.str}}
+  private val randomizerMargin = height * width / (maxMines + 3)
+  init {
+    var plantedCount = 0
+    for (i in 0 until height) {
+      val row = mutableListOf<Indicators>()
+      for (col in 0 until width) {
+        val rand = Random.nextInt(0, randomizerMargin)
 
-  val BASIC_FIELD_WIDTH = 9
-  val BASIC_FIELD_HEIGHT = 9
-
-
-  val field: MutableList<MutableList<String>> =  mutableListOf()
-  println("How many mines do you want on the field?")
-  val maxMines = readln().toInt()
-//    val maxMines = 40
-  var plantedCount =   0
-
-  val FIELD_WIDTH = BASIC_FIELD_WIDTH// * (maxMines / 10)
-  val FIELD_HEIGHT = BASIC_FIELD_HEIGHT// * (maxMines / 10)
-
-  for (i in 0 until FIELD_HEIGHT) {
-    val row = mutableListOf<String>()
-    for (i in 0 until FIELD_WIDTH) {
-      val rand = Random.nextInt(0, 3) * 0.7
-      val item = if (plantedCount < maxMines && rand > 0) MINE else EMPTY
-      if (item == MINE) {
-        plantedCount += 1
+        val item = if (plantedCount < maxMines && rand == 0) Indicators.MINE else Indicators.EMPTY
+        if (item == Indicators.MINE) {
+          plantedCount += 1
+        }
+        row.add(item)
       }
-
-      row.add(item)
+      field.add(row)
     }
-    field.add(row)
+    lookAround()
   }
 
-//  println("Planted $plantedCount $maxMines")
-
-  fun lookAround(gameField: MutableList<MutableList<String>>, row: Int, col: Int): Int {
+  private fun lookAroundCell(row: Int, col: Int): Int {
     var minesCount = 0
 
     for (y in -1..1) {
       for (x in -1..1) {
-        if (row + y in 0 until FIELD_HEIGHT && col + x  in 0 until FIELD_WIDTH) {
-          val item = gameField[row + y][col + x]
-          if (item == MINE) {
+        if (row + y in 0 until height && col + x  in 0 until width) {
+          val item = field[row + y][col + x]
+          if (item == Indicators.MINE) {
             minesCount += 1
           }
         }
@@ -52,17 +43,75 @@ fun main() {
     return minesCount
   }
 
-  // look around
-  for (y in 0 until FIELD_HEIGHT) {
-    for (x in 0 until FIELD_WIDTH) {
-      if (field[y][x] == EMPTY) {
-        val mines = lookAround(field, y, x)
-        if (mines > 0) {
-          field[y][x] = mines.toString();
+  private fun lookAround() {
+    for (y in 0 until height) {
+      for (x in 0 until width) {
+        if (field[y][x] == Indicators.EMPTY) {
+          val mines = lookAroundCell(y, x)
+          if (mines > 0) {
+            playerField[y][x] = mines.toString()
+          }
         }
-//                println("--- looked")
       }
     }
-    println(field[y].joinToString(""))
   }
+
+  fun printPlayerField() {
+    println("")
+    println(" |123456789|")
+    println("-|---------|")
+    for ((index, row) in playerField.withIndex()) {
+      print("${index + 1}|")
+      print(row.joinToString(""))
+      println("|")
+    }
+    println("-|---------|")
+  }
+  fun toggleMark(offsetX: Int, offsetY: Int): Boolean {
+    if (offsetX !in 1..width || offsetY !in 1..height) {
+      return false
+    }
+    val x = offsetX - 1
+    val y = offsetY - 1
+    var noError = true
+    when (playerField[y][x]) {
+      Indicators.MARKED.str -> playerField[y][x] = Indicators.EMPTY.str
+      Indicators.EMPTY.str -> playerField[y][x] = Indicators.MARKED.str
+      else -> noError = false
+    }
+
+    return noError
+  }
+
+  fun getAllMinesCleared(): Boolean {
+    var notMarked = maxMines
+    for (y in 0 until height) {
+      for (x in 0 until width) {
+        if (field[y][x] == Indicators.MINE && playerField[y][x] == Indicators.MARKED.str) {
+          notMarked -= 1
+        }
+      }
+    }
+
+    return notMarked == 0
+  }
+}
+
+fun main() {
+  println("How many mines do you want on the field?")
+  val maxMines = readln().toInt()
+//  val maxMines = 10
+  val field = GameField(maxMines)
+
+  while (!field.getAllMinesCleared()) {
+    field.printPlayerField()
+    println("Set/delete mines marks (x and y coordinates):")
+    val (x, y) = readln().split(" ").map { it -> it.toInt() }
+    val isCorrectMove = field.toggleMark(x, y)
+    if (!isCorrectMove) {
+      println("There is a number here!")
+    }
+  }
+
+  println("Congratulations! You found all the mines")
 }
