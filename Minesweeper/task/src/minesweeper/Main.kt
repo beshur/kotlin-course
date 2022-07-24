@@ -14,137 +14,195 @@ enum class ActionResult {
 }
 
 data class Point(val y: Int, val x: Int)
+class FieldPoint(var hasMine: Boolean = false, var explored: Boolean = false, var marked: Boolean = false, var minesAround: Int = 0) {
+  fun toString(withMines: Boolean): String {
+    return if (explored || withMines) {
+      if (hasMine) {
+        Indicator.MINE.str
+      } else {
+        minesAround.toString()
+      }
+    } else {
+      if (marked) {
+        Indicator.MARKED.str
+      } else {
+        Indicator.EMPTY.str
+      }
+    }
+  }
+
+
+  fun setExplored() {
+    explored = true
+  }
+  fun toggleMarked() {
+    marked = !marked
+  }
+
+  fun setMine() {
+    hasMine = true
+  }
+
+  fun setMinesCount(count: Int) {
+    minesAround = count
+  }
+}
+
 
 class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
-  private val field: MutableList<MutableList<Indicator>> = MutableList(9) { MutableList(width) { Indicator.EMPTY } }
-  private val playerField: MutableList<MutableList<String>> =
-    MutableList(9) { MutableList(width) { Indicator.EMPTY.str } }
+  private val field: MutableList<MutableList<FieldPoint>> = MutableList(height) { MutableList(width) { FieldPoint() } }
   private val randomizerMargin = height * width / (maxMines + 3)
-  private var turnCount = 0
-  var lost = false
-    private set
+
+
+  fun getPoint(y: Int, x: Int): FieldPoint {
+    return field[y][x]
+  }
+  fun setExplored(y: Int, x: Int): Boolean {
+    val point = getPoint(y, x)
+    point.setExplored()
+//    if (point.minesAround == 0) {
+      exploreAround(y, x)
+//    }
+
+    return point.hasMine
+  }
+
+  private fun exploreAround(y: Int, x: Int) {
+//    val clearCells = mutableListOf<FieldPoint>()
+    for (nextY in y -1..y + 1) {
+      for (nextX in x -1..x + 1) {
+
+        if (nextY in 0 until height && nextX in 0 until width) {
+          val nextPoint = getPoint(y, x)
+          println("exploreAround $nextY $nextY ${nextPoint.hasMine} ${nextPoint.marked} ${nextPoint.explored}")
+          if (!nextPoint.hasMine && !nextPoint.marked && !nextPoint.explored) {
+            setExplored(y, x)
+          }
+        }
+      }
+    }
+  }
+
+  private fun printRow(row: MutableList<FieldPoint>, withMines: Boolean): String {
+    return row.joinToString( separator = "", transform = { it.toString(withMines) })
+  }
+
+  fun print(withMines: Boolean): MutableList<String> {
+    val result = mutableListOf <String>()
+    for (row in field) {
+      result.add(printRow(row, withMines))
+    }
+    return result
+  }
+
 
   private fun plantMines() {
     var plantedCount = 0
     for (y in field.indices) {
       for (x in field[y].indices) {
         val rand = Random.nextInt(0, randomizerMargin)
-
-        val playerChecked = playerField[y][x] == Indicator.CHECKED.str
-        val item = if (plantedCount < maxMines && rand == 0 && !playerChecked) Indicator.MINE else Indicator.EMPTY
-        if (item == Indicator.MINE) {
+        val point = getPoint(y, x)
+        val playerExplored = point.explored
+        if (plantedCount < maxMines && rand == 0 && !playerExplored) {
           plantedCount += 1
+          point.setMine()
         }
-        field[y][x] = item
       }
     }
   }
 
-  private fun setPlayerFieldPoint(y: Int, x: Int, indicatorStr: String) {
-    val currentPoint = playerField[y][x]
-    if (currentPoint == Indicator.EMPTY.str) {
-      playerField[y][x] = indicatorStr
-    }
-  }
-
-  private fun lookAroundCell(row: Int, col: Int): Boolean {
+  private fun lookAroundCell(row: Int, col: Int): Int {
     var minesCount = 0
-    val clearCells = mutableListOf<Point>()
     println("looking around $row $col")
     for (nextY in -1..1) {
       for (nextX in -1..1) {
         val y = row + nextY
         val x = col + nextX
         if (y in 0 until height && x in 0 until width) {
-          val item = field[y][x]
-          if (item == Indicator.MINE) {
+          if (getPoint(y,x).hasMine) {
             minesCount += 1
           }
         }
       }
     }
+    return minesCount
+  }
 
-    if (minesCount > 0) {
-      setPlayerFieldPoint(row, col, minesCount.toString())
-      return false
-    } else {
-      return if (playerField[row][col] != Indicator.CHECKED.str && playerField[row][col] != Indicator.MARKED.str) {
-        setPlayerFieldPoint(row, col, Indicator.CHECKED.str)
-        true
-      } else {
-        false
+  private fun lookAround() {
+    for (row in field.indices) {
+      for (col in field[row].indices) {
+        val count = lookAroundCell(row, col)
+        getPoint(row, col).setMinesCount(count)
       }
     }
   }
 
-  private fun exploreClearCells(clearCells: MutableList<Point>) {
-    printPlayerField()
+  fun onFirstTurn(y: Int, x: Int) {
+    getPoint(y, x).setExplored()
+    plantMines()
+    lookAround()
 
-    println("clearCells ${clearCells.joinToString()}")
-
-    for (point in clearCells) {
-      explore(point.x, point.y)
+    // DEBUG
+    for (row in print(true)) {
+      println(row)
     }
+
   }
 
-  private fun lookAround(row: Int, col: Int) {
-    val nextClearCells = mutableListOf<Point>()
-
-    for (nextY in -1..1) {
-      for (nextX in -1..1) {
-        val y = row + nextY
-        val x = col + nextX
-        if (y in 0 until height && x in 0 until width) {
-          if (lookAroundCell(y, x)) {
-            // clear cell
-            nextClearCells.add(Point(y, x))
-          }
+  fun getAllMinesCleared(): Boolean {
+    var notMarked = maxMines
+//    var allCleared = width * height - maxMines
+    for (y in 0 until height) {
+      for (x in 0 until width) {
+//        if (playerField[y][x] != Indicators.EMPTY.str) {
+//          allCleared -= 1
+//        }
+        val point = getPoint(y, x)
+        if (point.marked && point.hasMine) {
+          notMarked -= 1
         }
       }
     }
-    exploreClearCells(nextClearCells)
+
+    return notMarked == 0
   }
+
+
+}
+
+class Game(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
+  private val field = GameField(maxMines, height, width)
+  private val playerField: MutableList<MutableList<String>> =
+    MutableList(9) { MutableList(width) { Indicator.EMPTY.str } }
+  private var turnCount = 0
+  var lost = false
+    private set
 
   fun printPlayerField() {
     println("")
     println(" |123456789|")
     println("-|---------|")
-    for ((index, row) in playerField.withIndex()) {
-      print("${index + 1}|")
-      print(row.joinToString(""))
-      println("|")
+    for ((index, row) in field.print(lost).withIndex()) {
+      println("${index + 1}|$row|")
     }
     println("-|---------|")
   }
 
   private fun toggleMark(x: Int, y: Int): ActionResult {
-    when (playerField[y][x]) {
-      Indicator.MARKED.str -> setPlayerFieldPoint(y, x, Indicator.EMPTY.str)
-      Indicator.EMPTY.str -> setPlayerFieldPoint(y, x, Indicator.MARKED.str)
-    }
+    field.getPoint(y, x).toggleMarked()
     return ActionResult.CHECKED
   }
 
   private fun renderAllMines() {
-    for (y in field.indices) {
-      for (x in field[y].indices) {
-        if (field[y][x] == Indicator.MINE) {
-          // only if game ends do not use setter
-          playerField[y][x] = Indicator.MINE.str
-        }
-      }
-    }
+    field.print(true)
   }
 
   private fun explore(x: Int, y: Int): ActionResult {
-    return if (field[y][x] == Indicator.MINE) {
+    val hasMine = field.setExplored(y, x)
+    return if (hasMine) {
       renderAllMines()
       ActionResult.DETONATED
     } else {
-      if (playerField[y][x] != Indicator.MARKED.str) {
-        // look around
-        lookAround(y, x)
-      }
       ActionResult.CHECKED
     }
   }
@@ -161,8 +219,7 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
     }
 
     if (turnCount == 0) {
-      setPlayerFieldPoint(y, x, Indicator.CHECKED.str)
-      plantMines()
+      field.onFirstTurn(y, x)
     }
     turnCount += 1
 
@@ -175,22 +232,8 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
   }
 
   fun getAllMinesCleared(): Boolean {
-    var notMarked = maxMines
-//    var allCleared = width * height - maxMines
-    for (y in 0 until height) {
-      for (x in 0 until width) {
-//        if (playerField[y][x] != Indicators.EMPTY.str) {
-//          allCleared -= 1
-//        }
-        if (field[y][x] == Indicator.MINE && playerField[y][x] == Indicator.MARKED.str) {
-          notMarked -= 1
-        }
-      }
-    }
-
-    return notMarked == 0
+    return field.getAllMinesCleared()
   }
-
 
   fun playerLost() {
     lost = true
@@ -206,29 +249,29 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
 
 fun main() {
   println("How many mines do you want on the field?")
-  val maxMines = readln().toInt()
-//  val maxMines = 10
-  val field = GameField(maxMines)
+//  val maxMines = readln().toInt()
+  val maxMines = 10
+  val game = Game(maxMines)
 
-  while (!field.getAllMinesCleared() || field.lost) {
-    field.printPlayerField()
+  while (!game.getAllMinesCleared() || game.lost) {
+    game.printPlayerField()
     println("Set/unset mine marks or claim a cell as free (x and y coordinates with either mine or free):")
     val (xStr, yStr, actionStr) = readln().split(" ")
-    val (x, y) = listOf(xStr, yStr).map { it -> it.toInt() }
+    val (x, y) = listOf(xStr, yStr).map { it.toInt() }
     val action = when (actionStr) {
       Action.MINE.str -> Action.MINE
       Action.FREE.str -> Action.FREE
       else -> Action.MINE
     }
 
-    val turnResult = field.playerTurn(x, y, action)
+    val turnResult = game.playerTurn(x, y, action)
     when (turnResult) {
       ActionResult.INVALID -> println("There is a number here!")
-      ActionResult.DETONATED -> return field.playerLost()
+      ActionResult.DETONATED -> return game.playerLost()
       else -> print("")
     }
 
   }
 
-  field.playerWon()
+  game.playerWon()
 }
