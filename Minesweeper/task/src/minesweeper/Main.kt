@@ -2,7 +2,7 @@ package minesweeper
 
 import kotlin.random.Random
 
-enum class Indicators(val str: String) {
+enum class Indicator(val str: String) {
   MINE("X"), EMPTY("."), MARKED("*"), CHECKED("/")
 }
 enum class Action(val str: String) {
@@ -16,9 +16,9 @@ enum class ActionResult {
 data class Point(val y: Int, val x: Int)
 
 class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
-  private val field: MutableList<MutableList<Indicators>> = MutableList(9) { MutableList(width) { Indicators.EMPTY } }
+  private val field: MutableList<MutableList<Indicator>> = MutableList(9) { MutableList(width) { Indicator.EMPTY } }
   private val playerField: MutableList<MutableList<String>> =
-    MutableList(9) { MutableList(width) { Indicators.EMPTY.str } }
+    MutableList(9) { MutableList(width) { Indicator.EMPTY.str } }
   private val randomizerMargin = height * width / (maxMines + 3)
   private var turnCount = 0
   var lost = false
@@ -30,13 +30,20 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
       for (x in field[y].indices) {
         val rand = Random.nextInt(0, randomizerMargin)
 
-        val playerChecked = playerField[y][x] == Indicators.CHECKED.str
-        val item = if (plantedCount < maxMines && rand == 0 && !playerChecked) Indicators.MINE else Indicators.EMPTY
-        if (item == Indicators.MINE) {
+        val playerChecked = playerField[y][x] == Indicator.CHECKED.str
+        val item = if (plantedCount < maxMines && rand == 0 && !playerChecked) Indicator.MINE else Indicator.EMPTY
+        if (item == Indicator.MINE) {
           plantedCount += 1
         }
         field[y][x] = item
       }
+    }
+  }
+
+  private fun setPlayerFieldPoint(y: Int, x: Int, indicatorStr: String) {
+    val currentPoint = playerField[y][x]
+    if (currentPoint == Indicator.EMPTY.str) {
+      playerField[y][x] = indicatorStr
     }
   }
 
@@ -50,23 +57,19 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
         val x = col + nextX
         if (y in 0 until height && x in 0 until width) {
           val item = field[y][x]
-          if (item == Indicators.MINE) {
+          if (item == Indicator.MINE) {
             minesCount += 1
-          } else {
-//            clearCells.add(Point(y, x))
-//            explore(x, y)
           }
         }
       }
     }
 
     if (minesCount > 0) {
-      playerField[row][col] = minesCount.toString()
-      clearCells.clear()
+      setPlayerFieldPoint(row, col, minesCount.toString())
       return false
     } else {
-      return if (playerField[row][col] != Indicators.CHECKED.str) {
-        playerField[row][col] = Indicators.CHECKED.str
+      return if (playerField[row][col] != Indicator.CHECKED.str && playerField[row][col] != Indicator.MARKED.str) {
+        setPlayerFieldPoint(row, col, Indicator.CHECKED.str)
         true
       } else {
         false
@@ -116,8 +119,8 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
 
   private fun toggleMark(x: Int, y: Int): ActionResult {
     when (playerField[y][x]) {
-      Indicators.MARKED.str -> playerField[y][x] = Indicators.EMPTY.str
-      Indicators.EMPTY.str -> playerField[y][x] = Indicators.MARKED.str
+      Indicator.MARKED.str -> setPlayerFieldPoint(y, x, Indicator.EMPTY.str)
+      Indicator.EMPTY.str -> setPlayerFieldPoint(y, x, Indicator.MARKED.str)
     }
     return ActionResult.CHECKED
   }
@@ -125,20 +128,23 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
   private fun renderAllMines() {
     for (y in field.indices) {
       for (x in field[y].indices) {
-        if (field[y][x] == Indicators.MINE) {
-          playerField[y][x] = Indicators.MINE.str
+        if (field[y][x] == Indicator.MINE) {
+          // only if game ends do not use setter
+          playerField[y][x] = Indicator.MINE.str
         }
       }
     }
   }
 
   private fun explore(x: Int, y: Int): ActionResult {
-    return if (field[y][x] == Indicators.MINE) {
+    return if (field[y][x] == Indicator.MINE) {
       renderAllMines()
       ActionResult.DETONATED
     } else {
-      // look around
-      lookAround(y, x)
+      if (playerField[y][x] != Indicator.MARKED.str) {
+        // look around
+        lookAround(y, x)
+      }
       ActionResult.CHECKED
     }
   }
@@ -150,12 +156,12 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
     val x = offsetX - 1
     val y = offsetY - 1
 
-    if (playerField[y][x] == Indicators.CHECKED.str) {
+    if (playerField[y][x] == Indicator.CHECKED.str) {
       return ActionResult.INVALID
     }
 
     if (turnCount == 0) {
-      playerField[y][x] = Indicators.CHECKED.str
+      setPlayerFieldPoint(y, x, Indicator.CHECKED.str)
       plantMines()
     }
     turnCount += 1
@@ -176,7 +182,7 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
 //        if (playerField[y][x] != Indicators.EMPTY.str) {
 //          allCleared -= 1
 //        }
-        if (field[y][x] == Indicators.MINE && playerField[y][x] == Indicators.MARKED.str) {
+        if (field[y][x] == Indicator.MINE && playerField[y][x] == Indicator.MARKED.str) {
           notMarked -= 1
         }
       }
