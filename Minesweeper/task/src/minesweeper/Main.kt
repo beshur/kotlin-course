@@ -6,31 +6,27 @@ enum class Indicator(val str: String) {
   MINE("X"), EMPTY("."), MARKED("*"), CHECKED("/")
 }
 enum class Action(val str: String) {
-  MINE("mine"), FREE("free"), NULL("null")
+  MINE("mine"), FREE("free")
 }
 
 enum class ActionResult {
   CHECKED, DETONATED, INVALID
 }
 
-data class Point(val y: Int, val x: Int)
-class FieldPoint(var hasMine: Boolean = false, var explored: Boolean = false, var marked: Boolean = false, var minesAround: Int = 0) {
+class FieldPoint(
+  var hasMine: Boolean = false,
+  var explored: Boolean = false,
+  var marked: Boolean = false,
+  var minesAround: Int = 0) {
   fun toString(withMines: Boolean): String {
-    return if (explored || withMines) {
-      if (hasMine) {
-        Indicator.MINE.str
-      } else {
-        minesAround.toString()
-      }
-    } else {
-      if (marked) {
-        Indicator.MARKED.str
-      } else {
-        Indicator.EMPTY.str
-      }
+    return when {
+      withMines && hasMine -> Indicator.MINE.str
+      marked -> Indicator.MARKED.str
+      explored && !hasMine && minesAround > 0 -> minesAround.toString()
+      explored && !hasMine && minesAround == 0 -> Indicator.CHECKED.str
+      else -> Indicator.EMPTY.str
     }
   }
-
 
   fun setExplored() {
     explored = true
@@ -49,10 +45,9 @@ class FieldPoint(var hasMine: Boolean = false, var explored: Boolean = false, va
 }
 
 
-class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
+class GameField(private val maxMines: Int = 10, private val height: Int = 9, private val width: Int = 9) {
   private val field: MutableList<MutableList<FieldPoint>> = MutableList(height) { MutableList(width) { FieldPoint() } }
   private val randomizerMargin = height * width / (maxMines + 3)
-
 
   fun getPoint(y: Int, x: Int): FieldPoint {
     return field[y][x]
@@ -60,23 +55,24 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
   fun setExplored(y: Int, x: Int): Boolean {
     val point = getPoint(y, x)
     point.setExplored()
-//    if (point.minesAround == 0) {
+
+    if (!point.hasMine) {
       exploreAround(y, x)
-//    }
+    }
 
     return point.hasMine
   }
 
   private fun exploreAround(y: Int, x: Int) {
-//    val clearCells = mutableListOf<FieldPoint>()
-    for (nextY in y -1..y + 1) {
-      for (nextX in x -1..x + 1) {
-
+    for (nextY in y - 1..y + 1) {
+      for (nextX in x - 1..x + 1) {
         if (nextY in 0 until height && nextX in 0 until width) {
-          val nextPoint = getPoint(y, x)
-          println("exploreAround $nextY $nextY ${nextPoint.hasMine} ${nextPoint.marked} ${nextPoint.explored}")
+          val nextPoint = getPoint(nextY, nextX)
           if (!nextPoint.hasMine && !nextPoint.marked && !nextPoint.explored) {
-            setExplored(y, x)
+            nextPoint.setExplored()
+            if (nextPoint.minesAround == 0) {
+              setExplored(nextY, nextX)
+            }
           }
         }
       }
@@ -87,7 +83,7 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
     return row.joinToString( separator = "", transform = { it.toString(withMines) })
   }
 
-  fun print(withMines: Boolean): MutableList<String> {
+  fun printField(withMines: Boolean): MutableList<String> {
     val result = mutableListOf <String>()
     for (row in field) {
       result.add(printRow(row, withMines))
@@ -102,8 +98,7 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
       for (x in field[y].indices) {
         val rand = Random.nextInt(0, randomizerMargin)
         val point = getPoint(y, x)
-        val playerExplored = point.explored
-        if (plantedCount < maxMines && rand == 0 && !playerExplored) {
+        if (plantedCount < maxMines && rand == 0 && !point.explored) {
           plantedCount += 1
           point.setMine()
         }
@@ -119,7 +114,7 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
         val y = row + nextY
         val x = col + nextX
         if (y in 0 until height && x in 0 until width) {
-          if (getPoint(y,x).hasMine) {
+          if (getPoint(y, x).hasMine) {
             minesCount += 1
           }
         }
@@ -143,7 +138,7 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
     lookAround()
 
     // DEBUG
-    for (row in print(true)) {
+    for (row in printField(true)) {
       println(row)
     }
 
@@ -170,7 +165,7 @@ class GameField(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9)
 
 }
 
-class Game(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
+class Game(maxMines: Int = 10, private  val height: Int = 9, private val width: Int = 9) {
   private val field = GameField(maxMines, height, width)
   private val playerField: MutableList<MutableList<String>> =
     MutableList(9) { MutableList(width) { Indicator.EMPTY.str } }
@@ -182,7 +177,7 @@ class Game(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
     println("")
     println(" |123456789|")
     println("-|---------|")
-    for ((index, row) in field.print(lost).withIndex()) {
+    for ((index, row) in field.printField(lost).withIndex()) {
       println("${index + 1}|$row|")
     }
     println("-|---------|")
@@ -194,7 +189,7 @@ class Game(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
   }
 
   private fun renderAllMines() {
-    field.print(true)
+    field.printField(true)
   }
 
   private fun explore(x: Int, y: Int): ActionResult {
@@ -249,8 +244,8 @@ class Game(val maxMines: Int = 10, val height: Int = 9, val width: Int = 9) {
 
 fun main() {
   println("How many mines do you want on the field?")
-//  val maxMines = readln().toInt()
-  val maxMines = 10
+  val maxMines = readln().toInt()
+//  val maxMines = 10
   val game = Game(maxMines)
 
   while (!game.getAllMinesCleared() || game.lost) {
@@ -264,8 +259,7 @@ fun main() {
       else -> Action.MINE
     }
 
-    val turnResult = game.playerTurn(x, y, action)
-    when (turnResult) {
+    when (game.playerTurn(x, y, action)) {
       ActionResult.INVALID -> println("There is a number here!")
       ActionResult.DETONATED -> return game.playerLost()
       else -> print("")
